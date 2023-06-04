@@ -1,18 +1,21 @@
+# Makefile
+
+# Compiler
 CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -std=c99 -g
-LDFLAGS = -pthread
-LDLIBS = -lm
-SOURCES = pipeline_st.c ActiveObject.c queue.c
-OBJECTS = $(SOURCES:.c=.o)
-EXECUTABLE = pipeline_st
 
-all: $(EXECUTABLE)
+# Compiler Flags
+CFLAGS = -Wall -Wextra -pthread
 
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $(LDFLAGS) $(OBJECTS) -o $@ $(LDLIBS)
+# The build target executable
+TARGET = st_pipeline
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+# Source files
+SRCS = queue.c Active_Object.c main.c
+
+all: $(TARGET)
+
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS) -lm
 
 clean:
-	rm -f $(OBJECTS) $(EXECUTABLE)
+	$(RM) $(TARGET)
