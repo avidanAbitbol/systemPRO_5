@@ -1,27 +1,20 @@
-#ifndef ACTIVE_H
-#define ACTIVE_H
-
 #include "queue.h"
-#include <pthread.h>
-#include <stdbool.h>
 
-typedef struct {
+typedef struct _Task {
+    unsigned int num_of_tasks;
+    unsigned int _data;
+} Task, *PTask;
+
+PTask createTask(unsigned int num_of_tasks, unsigned int _data);
+void destroyTask(PTask task);
+typedef int (*PQueueFunc)(void *);
+typedef struct _ActiveObject {
     pthread_t thread;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-    Queue* queue;
-    void (*func)(void*);
-    int stopInProgress;
-    int tasks;
-    bool stop;  // Declare this field
-} ActiveObject;
+    PQueue queue;
+    PQueueFunc func;
+} ActiveObject, *PActiveObject;
+PActiveObject CreateActiveObject(PQueueFunc func);
+PQueue getQueue(PActiveObject activeObject);
+void stopActiveObject(PActiveObject activeObject);
+void *activeObjectRunFunction(void *activeObject);
 
-ActiveObject* createActiveObject();
-void createActiveThread(ActiveObject* active);
-void enqueueTask(ActiveObject* active, void* task);
-Queue* getQueue(ActiveObject* active);
-void stopActiveObject(ActiveObject* active);
-void destroyActiveObject(ActiveObject* active);
-void* threadFunc(void* arg);
-void enqueueTask(ActiveObject* ao, void* arg);
-#endif /* ACTIVE_H */
