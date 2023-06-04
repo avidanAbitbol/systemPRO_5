@@ -1,60 +1,179 @@
-#include <pthread.h>
-#include <stdlib.h>
 #include "queue.h"
+#include <stdio.h>
+#include <stdlib.h>
 
+PQueue queueCreate() {
+    PQueue queue = (PQueue)malloc(sizeof(Queue));
 
-
-
-Queue* createQueue() {
-    Queue* queue = (Queue*)malloc(sizeof(Queue));
+    if (queue == NULL)
+    {
+        return NULL;
+    }
     queue->head = NULL;
     queue->tail = NULL;
-    pthread_mutex_init(&queue->mutex, NULL);
-    pthread_cond_init(&queue->cond, NULL);
+    queue->size = 0;
+    MUTEX_INIT(&queue->lock);
+    COND_INIT(&queue->cond);
     return queue;
 }
 
-void enqueue(Queue* queue, void* item) {
-    QueueNode* newNode = (QueueNode*)malloc(sizeof(QueueNode));
-    newNode->data = item;
-    newNode->next = NULL;
-
-    pthread_mutex_lock(&queue->mutex);
-
-    if (queue->tail == NULL) {
-        queue->head = queue->tail = newNode;
-    } else {
-        queue->tail->next = newNode;
-        queue->tail = newNode;
+void queueDestroy(PQueue queue) {
+    if (queue == NULL)
+    {
+        return;
     }
 
-    pthread_cond_signal(&queue->cond);
-    pthread_mutex_unlock(&queue->mutex);
-}
+    MUTEX_LOCK(&queue->lock);
 
-void* dequeue(Queue* queue) {
-    pthread_mutex_lock(&queue->mutex);
+    PQueueNode node = queue->head;
 
-    while (queue->head == NULL) {
-        pthread_cond_wait(&queue->cond, &queue->mutex);
+    while (node != NULL)
+    {
+        PQueueNode next = node->next;
+        free(node->data);
+        free(node);
+        node = next;
     }
 
-    QueueNode* temp = queue->head;
-    void* item = temp->data;
-    queue->head = queue->head->next;
+    MUTEX_UNLOCK(&queue->lock);
+    COND_DESTROY(&queue->cond);
+    MUTEX_DESTROY(&queue->lock);
 
-    if (queue->head == NULL) {
-        queue->tail = NULL;
-    }
-
-    free(temp);
-    pthread_mutex_unlock(&queue->mutex);
-
-    return item;
-}
-
-void destroyQueue(Queue* queue) {
-    pthread_mutex_destroy(&queue->mutex);
-    pthread_cond_destroy(&queue->cond);
     free(queue);
 }
+
+void queueEnqueue(PQueue queue, void *data) {
+    if (queue == NULL)
+    {
+        return;
+    }
+    PQueueNode node = (PQueueNode)malloc(sizeof(QueueNode));
+    if (node == NULL)
+    {
+        return;
+    }
+    node->data = data;
+    node->next = NULL;
+    MUTEX_LOCK(&queue->lock);
+    if (queue->head == NULL)
+    {
+        queue->head = node;
+        queue->tail = node;
+        COND_SIGNAL(&queue->cond);
+    }
+    else
+    {
+        queue->tail->next = node;
+        queue->tail = node;
+    }
+    queue->size++;
+    MUTEX_UNLOCK(&queue->lock);
+}
+
+void *queueDequeue(PQueue queue) {
+    if (queue == NULL)
+    {
+        return NULL;
+    }
+    MUTEX_LOCK(&queue->lock);
+    while (queue->head == NULL)
+        COND_WAIT(&queue->cond, &queue->lock);
+    PQueueNode node = queue->head;
+    void *data = node->data;
+    queue->head = node->next;
+    if (queue->head == NULL)
+        queue->tail = NULL;
+    free(node);
+    queue->size--;
+    MUTEX_UNLOCK(&queue->lock);
+    return data;
+}
+
+int queueIsEmpty(PQueue queue) {
+    if (queue == NULL)
+    {
+        return -1;
+    }
+    MUTEX_LOCK(&queue->lock);
+    int isEmpty = (queue->size == 0);
+    MUTEX_UNLOCK(&queue->lock);
+
+    return isEmpty;
+}
+
+int queueSize(PQueue queue) {
+		if (queue == NULL)
+		{
+			return -1;
+		}
+
+		MUTEX_LOCK(&queue->lock);
+		int size = queue->size;
+		MUTEX_UNLOCK(&queue->lock);
+
+		return size;
+	}
+
+	void *queuePeek(PQueue queue) {
+		if (queue == NULL)
+		{
+			return NULL;
+		}
+
+		MUTEX_LOCK(&queue->lock);
+
+		if (queue->head == NULL)
+		{
+			MUTEX_UNLOCK(&queue->lock);
+			return NULL;
+		}
+
+		void *data = queue->head->data;
+
+		MUTEX_UNLOCK(&queue->lock);
+
+		return data;
+	}
+
+	void *queuePeekTail(PQueue queue) {
+		if (queue == NULL)
+		{
+			return NULL;
+		}
+
+		MUTEX_LOCK(&queue->lock);
+
+		if (queue->tail == NULL)
+		{
+			MUTEX_UNLOCK(&queue->lock);
+			return NULL;
+		}
+
+		void *data = queue->tail->data;
+
+		MUTEX_UNLOCK(&queue->lock);
+
+		return data;
+	}
+
+	void queuePrint(PQueue queue) {
+		if (queue == NULL)
+		{
+			return;
+		}
+
+		MUTEX_LOCK(&queue->lock);
+		if (queue->head == NULL)
+		{
+			MUTEX_UNLOCK(&queue->lock);
+			return;
+		}
+
+		PQueueNode node = queue->head;
+
+		while (node != NULL)
+		{
+			node = node->next;
+		}
+		MUTEX_UNLOCK(&queue->lock);
+	}
