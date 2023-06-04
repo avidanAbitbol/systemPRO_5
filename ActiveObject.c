@@ -1,97 +1,95 @@
-#include <pthread.h>
+#include "Active_Object.h"
 #include <stdlib.h>
-#include "queue.h"
-#include "ActiveObject.h"
-
-
-int isEmpty(Queue* q) {
-    if (q->head == NULL) {
-        return 1;
+#include <pthread.h>
+#define ACTIVE_OBJECTS_NUM 4
+PActiveObject CreateActiveObject(PQueueFunc func) {
+    PActiveObject activeObject = (PActiveObject)malloc(sizeof(ActiveObject));
+    if (activeObject == NULL)
+    {
+        return NULL;
     }
-    return 0;
-}
-void* activeThread(void* arg) {
-    ActiveObject* active = (ActiveObject*)arg;
-    Queue* queue = active->queue;
-    void (*func)(void*) = active->func;
-
-    void* task;
-    while ((task = dequeue(queue))) {
-        if (func != NULL) {
-            func(task);
-        }
+    activeObject->queue = queueCreate();
+    if (activeObject->queue == NULL)
+    {
+        free(activeObject);
+        return NULL;
     }
-
-    return NULL;
+    if (func == NULL)
+    {
+        queueDestroy(activeObject->queue);
+        free(activeObject);
+        return NULL;
+    }
+    activeObject->func = func;
+    int ret = pthread_create(&activeObject->thread, NULL, activeObjectRunFunction, activeObject);
+    if (ret != 0)
+    {
+        queueDestroy(activeObject->queue);
+        free(activeObject);
+        return NULL;
+    }
+    return activeObject;
 }
 
-void enqueueTask(ActiveObject* ao, void* arg) {
-    pthread_mutex_lock(&ao->mutex);
+PQueue getQueue(PActiveObject activeObject) {
+    if (activeObject == NULL)
+    {
+        return NULL;
+    }
+    return activeObject->queue;
+}
 
-    if (ao->stop) {
-        pthread_mutex_unlock(&ao->mutex);
+void stopActiveObject(PActiveObject activeObject) {
+    if (activeObject == NULL)
+    {
         return;
     }
+    pthread_cancel(activeObject->thread);
+    activeObject->func = NULL;
+    pthread_join(activeObject->thread, NULL);
 
-    enqueue(ao->queue, arg);
-    ao->tasks++;
-    pthread_cond_signal(&ao->cond);
-    pthread_mutex_unlock(&ao->mutex);
+    queueDestroy(activeObject->queue);
+    free(activeObject);
 }
 
-void* threadFunc(void* arg) {
-    ActiveObject* active = (ActiveObject*)arg;
-    Queue* queue = active->queue;
-    void (*func)(void*) = active->func;
-
-    void* task;
-    while (1) {
-        pthread_mutex_lock(&active->mutex);
-        while (isEmpty(queue) && !active->stopInProgress) {
-            pthread_cond_wait(&active->cond, &active->mutex);
-        }
-        if (active->stopInProgress) {
-            pthread_mutex_unlock(&active->mutex);
-            break;  // Exit the loop and terminate the thread
-        }
-        task = dequeue(queue);
-        pthread_cond_signal(&active->cond);
-        pthread_mutex_unlock(&active->mutex);
-        if (task == NULL) {
-            break;  // Exit the loop and terminate the thread
-        }
-        active->tasks--;
-        func(task);
+void *activeObjectRunFunction(void *activeObject) {
+    if (activeObject == NULL)
+    {
+        return NULL;
     }
-
-    return NULL;
+    PActiveObject ao = (PActiveObject)activeObject;
+    PQueue queue = ao->queue;
+    void *task = NULL;
+    if (queue == NULL)
+    {
+        return NULL;
+    }
+    while (ao->func && ((task = DEQUEUE(queue, void *))))
+    {
+        int ret = ao->func(task);
+        if (ret == 0)
+        {
+            break;
+        }
+    }
+    return activeObject;
 }
 
-ActiveObject* createActiveObject() {
-    ActiveObject* active = (ActiveObject*)malloc(sizeof(ActiveObject));
-    active->queue = createQueue();
-    active->func = NULL;
-    active->stop = 0;
-    return active;
+PTask createTask(unsigned int num_of_tasks, unsigned int _data) {
+    PTask task = (PTask)malloc(sizeof(Task));
+    if (task == NULL)
+    {
+        return NULL;
+    }
+    task->num_of_tasks = num_of_tasks;
+    task->_data = _data;
+    return task;
+}
+void destroyTask(PTask task) {
+    if (task == NULL)
+    {
+        return;
+    }
+    free(task);
 }
 
-void createActiveThread(ActiveObject* active) {
-    pthread_create(&active->thread, NULL, threadFunc, active);
-}
-
-Queue* getQueue(ActiveObject* active) {
-    return active->queue;
-}
-
-void stopActiveObject(ActiveObject* active) {
-    pthread_mutex_lock(&active->mutex);
-    active->stopInProgress = 1;  // Set the flag to indicate stop is in progress
-    enqueue(active->queue, NULL);
-    pthread_cond_signal(&active->cond);
-    pthread_mutex_unlock(&active->mutex);
-}
-
-void destroyActiveObject(ActiveObject* active) {
-    destroyQueue(active->queue);
-    free(active);
-}
